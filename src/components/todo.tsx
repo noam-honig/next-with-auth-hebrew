@@ -5,6 +5,8 @@ import { Task } from "../model/task"
 import { UserInfo, remult } from "remult"
 import { TasksController } from "./TasksController"
 import { signIn, signOut, useSession } from "next-auth/react"
+import { AblySubscriptionClient } from "remult/ably"
+import ably from "ably/promises"
 
 const taskRepo = remult.repo(Task)
 
@@ -37,14 +39,18 @@ export default function Todo() {
   async function setAllCompleted(completed: boolean) {
     TasksController.setAllCompleted(completed)
   }
-
+  useEffect(() => {
+    remult.apiClient.subscriptionClient = new AblySubscriptionClient(
+      new ably.Realtime({ authUrl: "/api/getAblyToken", authMethod: "POST" })
+    )
+  }, [])
   const session = useSession()
   useEffect(() => {
     remult.user = session.data?.user as UserInfo
     if (session.status === "unauthenticated") signIn()
     else if (session.status == "authenticated")
-      taskRepo
-        .find({
+      return taskRepo
+        .liveQuery({
           orderBy: {
             createdAt: "asc",
           },
@@ -52,7 +58,7 @@ export default function Todo() {
             completed: undefined,
           },
         })
-        .then((info) => setTasks(info))
+        .subscribe((info) => setTasks(info.applyChanges))
   }, [session])
   if (session.status !== "authenticated") return <></>
 
